@@ -20,6 +20,47 @@ const equal = (input, expected = bash(input), options) => {
 };
 
 describe('unit tests from brace-expand', () => {
+  describe('errors', () => {
+    it('should reject deeply nested ASTs', () => {
+      let ast = { type: 'text', value: 'a' };
+      for (let i = 0; i < 101; i++) ast = { type: 'brace', nodes: [ast] };
+      ast = { type: 'root', nodes: [ast] };
+      assert.throws(() => expand(ast), /exceeds max depth/);
+    });
+
+    it('should reject deeply nested braces instead of overflowing the stack', () => {
+      const input = '{'.repeat(4990) + 'a,b' + '}'.repeat(4990);
+      assert.throws(() => braces(input), /exceeds max depth/);
+      assert.throws(() => braces(input, { expand: true }), /exceeds max depth/);
+      assert.throws(() => braces.compile(input), /exceeds max depth/);
+      assert.throws(() => braces.expand(input), /exceeds max depth/);
+      assert.throws(() => braces.stringify(input), /exceeds max depth/);
+    });
+
+    it('should reject deeply nested parentheses instead of overflowing the stack', () => {
+      const input = '('.repeat(4999) + ')'.repeat(4999);
+      assert.throws(() => braces(input), /exceeds max depth/);
+      assert.throws(() => braces(input, { expand: true }), /exceeds max depth/);
+    });
+
+    it('should reject cyclic ASTs instead of recursing forever', () => {
+      const cyclic = () => {
+        const brace = { type: 'brace', nodes: [] };
+        brace.nodes.push(brace);
+        return { type: 'root', nodes: [brace] };
+      };
+      assert.throws(() => braces.compile(cyclic()), /exceeds max depth/);
+      assert.throws(() => braces.expand(cyclic()), /exceeds max depth/);
+      assert.throws(() => braces.stringify(cyclic()), /exceeds max depth/);
+    });
+
+    it('should support nesting up to the maximum depth', () => {
+      const input = '{'.repeat(100) + 'a,b' + '}'.repeat(100);
+      assert.doesNotThrow(() => braces(input));
+      assert.doesNotThrow(() => braces(input, { expand: true }));
+    });
+  });
+
   describe('extglobs', () => {
     it('should split on commas when braces are inside extglobs', () => {
       equal('*(a|{b|c,d})', ['*(a|b|c)', '*(a|d)']);
